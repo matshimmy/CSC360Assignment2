@@ -1,0 +1,38 @@
+1. How many threads are you going to use? Specify the task that you intend each thread to perform.
+
+A thread will be created for each flow that is in the input file. Each thread will sleep until it's "arrival time" comes. Then the thread will "transmit" until the specified time is achieved.
+
+
+2. Do the threads work independently? Or, is there an overall “controller” thread?
+
+There will be a controller thread that will take the thread that is at the top of the thread queue.
+
+
+3. How many mutexes are you going to use? Specify the operation that each mutex will guard.
+
+There will be one mutex per thread and it will guard the transmisson operation. There will also be a mutex that does the queue extraciton.
+
+
+4. Will the main thread be idle? If not, what will it be doing?
+
+The main thread will be waiting for all the threads to terminate.
+
+
+5. How are you going to represent flows? What type of data structure will you use?
+
+A structure that conatins arrival time, transmission time, priority and id(Flow No).
+
+
+6. How are you going to ensure that data structures in your program will not be modified concurrently?
+
+A new structure will be made for every thread.
+
+
+7. How many convars are you going to use? For each convar:
+
+(a) One conditional variable will be used to determine when the thread finishes transmission. (b) The mutex that is associated with the convar is the transmission mutex because that is when it will need to be used. (c) Once the pthread_cond_wait has been unblocked then the acuired mutex should find the next thread in queue
+
+
+8. In 25 lines or less, briefly sketch the overall algorithm you will use
+
+
