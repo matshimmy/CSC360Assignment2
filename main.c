@@ -65,23 +65,25 @@ void *thrFunction(void *flowItem) {
 
 	flow *item = (flow *)flowItem ;
 	struct timeval start, end;
+	float atime;
 
 	/*wait for arrival*/
 	usleep((int)(100000*item->arrivalTime)); /*Multiply by 100000 because input file is gives in seconds one decimal place to the right and usleep is amount of microseconds*/
 	printf("Flow %2d arrives: arrival time (%.2f), transmission time (%.1f), priority (%2d).\n",item->id,.1*item->arrivalTime,.1*item->transTime,item->priority);
 
 	requestPipe(item);
-	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,item->transTime);
+	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,.1*item->transTime);
 
 	gettimeofday(&start,NULL);
 	/*sleep for transmission time*/
 	usleep((int)(100000*item->transTime));
 	gettimeofday(&end,NULL);
 
+	atime = (float)(((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec)/1000000;
 	releasePipe();
-	printf("Flow %2d finishes its transmission at time %ld.\n",item->id,((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec);
+	printf("Flow %2d finishes its transmission at time %.2f.\n",item->id,atime);
 
-	return 0; /*TODO: check this warning*/
+	return 0;
 }
 
 int main(int argc, char **argv) {
