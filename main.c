@@ -10,6 +10,7 @@ you could use gettimeofday(...) to get down to microseconds!
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <unistd.h>
 
 typedef struct _flow
 {
@@ -27,62 +28,127 @@ flow *queueList[MAXFLOW];  // store waiting flows while transmission pipe is occ
 pthread_t thrList[MAXFLOW]; // each thread executes one flow
 pthread_mutex_t trans_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t trans_cvar = PTHREAD_COND_INITIALIZER;
+int iTrans = 0; /*inTransmission 0 == in transmission*/
 
 void requestPipe(flow *item) {
-	/*pthread_mutex_lock(&trans_mtx);*/
+	pthread_mutex_lock(&trans_mtx);
 
-	if (queueList[0] == NULL) {
-		printf("%dthe queue is empty && pipe available TRANSMIT\n",item->id);
-		queueList[0] = item;
-		/*...do some stuff..*/
-			/*unlock mutex;*/
-		/*return ;*/
-	}else{
-		printf("%dthe queue is not empty SORT SHIT\n",item->id);
-
-		int k = 1;
-		while(queueList[k] != NULL){
-			queueList[k]; /*Add to the end of the list*/
-			k++;
-		}
-		queueList[k] = item;
+	if (queueList[0] == NULL && iTrans == 0) {
+		iTrans = 1;/*in transmission*/
+		pthread_mutex_lock(&trans_mtx);
+		exit(0);
 	}
-	/*add item in queue, sort the queue according rules*/
 
-	/*printf(Waiting...);*/
-	// while(){wait;}
-	// ^^from lab
-	// key point here..
-	// wait till pipe to be available and be at the top of the queue
+	int k = 1;
+	while(queueList[k] != NULL){
+		k++;
+	}
+	queueList[k] = item;
 
-	// update queue
+	int origink = k;
+	/*(a) The one with the highest priority start its transmission first.*/
+	while(queueList[k]->priority<queueList[k-1]->priority){
+		/*bubble sort up*/
+		flow *temp = queueList[k-1];
+		queueList[k-1] = queueList[k];
+		queueList[k] = temp;
 
-	/*pthread_mutex_unlock(&trans_mtx);*/
-	printf("***********\n");
+		k--;
+		if(k == 0){ /*The array would be out of bounds if k is 0*/
+			break;
+		}
+	}
+	/*(b) If there is a tie at the highest priority, the one whose arrival time is the earliest start its transmission first.*/
+	if(k != 0 ){ /*already at the top of the list*/
+		while(queueList[k]->priority==queueList[k-1]->priority){
+			/*bubble sort up*/
+			if(queueList[k]->arrivalTime<queueList[k-1]->arrivalTime){
+				flow *temp = queueList[k-1];
+				queueList[k-1] = queueList[k];
+				queueList[k] = temp;
+			}
+
+			k--;
+			if(k == 0){ /*The array would be out of bounds if k is 0*/
+				break;
+			}
+		}
+	}
+	/*(c) If there is still a tie, the one that has the smallest transmission time starts its transmission first.*/
+	if(k != 0 ){ /*already at the top of the list*/
+		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->priority==queueList[k-1]->priority){
+			/*bubble sort up*/
+			if(queueList[k]->transTime<queueList[k-1]->transTime){
+				flow *temp = queueList[k-1];
+				queueList[k-1] = queueList[k];
+				queueList[k] = temp;
+			}
+
+			k--;
+			if(k == 0){ /*The array would be out of bounds if k is 0*/
+				break;
+			}
+		}
+	}
+	/*(d) If there is still a tie, the one that appears first in the input file starts its transmission first.*/
+	if(k != 0 ){ /*already at the top of the list*/
+		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->priority==queueList[k-1]->priority && queueList[k]->transTime==queueList[k-1]->transTime){
+			/*bubble sort up*/
+			if(queueList[k]->id<queueList[k-1]->id){
+				flow *temp = queueList[k-1];
+				queueList[k-1] = queueList[k];
+				queueList[k] = temp;
+			}
+
+			k--;
+			if(k == 0){ /*The array would be out of bounds if k is 0*/
+				break;
+			}
+		}
+	}
+	if(k != 0){
+		printf("Flow %2d waits for the finish of flow %2d. \n",queueList[k]->id,queueList[k-1]->id);
+	}
+	/*wait till pipe to be available and be at the top of the queue*/
+	while(item->id != queueList[0]->id && iTrans == 0){ /*while the item is not at the front of the list*/
+		pthread_cond_wait(&trans_cvar, &trans_mtx);
+	}
+
+	/*Moves everything over one*/
+	int i = 0;
+	while(queueList[i+1] != NULL){
+		queueList[i] = queueList[i+1];
+	}
+	queueList[i] = NULL;
+
+	pthread_mutex_unlock(&trans_mtx);
 }
 
-/*void releasePipe() {*/
-	/*// I believe you genuis will figure this out!*/
-/*}*/
+void releasePipe() {
+	pthread_cond_signal(&trans_cvar);
+}
 
 
-// entry point for each thread created
+/*entry point for each thread created*/
 void *thrFunction(void *flowItem) {
 
 	flow *item = (flow *)flowItem ;
 
-	// wait for arrival
-	usleep((int)(100000*item->arrivalTime));
+	/*wait for arrival*/
+	usleep((int)(100000*item->arrivalTime)); /*Multiply by 100000 because input file is gives in seconds one decimal place to the right and usleep is amount of microseconds*/
 	printf("Flow %2d arrives: arrival time (%.2f), transmission time (%.1f), priority (%2d).\n",item->id,.1*item->arrivalTime,.1*item->transTime,item->priority);
 
 	requestPipe(item);
-	printf("start\n");
+	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,item->transTime);
 
-	// sleep for transmission time
-	sleep(1);
+	/*sleep for transmission time*/
+	usleep((int)(100000*item->transTime));
 
-	/*releasePipe(item);*/
-	printf("Finish\n");
+	iTrans = 0;
+	releasePipe();
+	printf("Flow %2d finishes its transmission at time %d.\n",item->id,item->transTime); /*TODO: calculate actual transmission time*/
+
+	return 0; /*TODO: check this warning*/
 }
 
 int main(int argc, char **argv) {
@@ -131,9 +197,13 @@ int main(int argc, char **argv) {
 	}
 	// wait for all threads to terminate
 	sleep(10);
+	for( x = 0;x<3;x++){
+		printf("%d\n",queueList[x]->priority);
+	}
 	pthread_join(thrList[0],NULL);
 
-	// destroy mutex & condition variable
+	pthread_mutex_destroy(&trans_mtx);
+	pthread_cond_destroy(&trans_cvar);
 
 	return 0;
 }
