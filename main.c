@@ -11,14 +11,9 @@ you could use gettimeofday(...) to get down to microseconds!
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
-
-typedef struct _flow
-{
-	float arrivalTime ;
-	float transTime ;
-	int priority ;
-	int id ;
-} flow;
+#include <sys/time.h>
+#include "sortQueue.h"
+#include "flowStruct.h"
 
 #define MAXFLOW 255
 
@@ -34,91 +29,25 @@ void requestPipe(flow *item) {
 	pthread_mutex_lock(&trans_mtx);
 
 	if (queueList[0] == NULL && iTrans == 0) {
-		iTrans = 1;/*in transmission*/
+		iTrans = item->id;/*in transmission*/
 		pthread_mutex_unlock(&trans_mtx);
 		return;
-		printf("THE THREAD SHOULDN'T get here\n");
 	}
 
-	int k = 1;
-	while(queueList[k] != NULL){
-		k++;
-	}
-	queueList[k] = item;
-
-	int origink = k;
-	/*(a) The one with the highest priority start its transmission first.*/
-	while(queueList[k]->priority<queueList[k-1]->priority){
-		/*bubble sort up*/
-		flow *temp = queueList[k-1];
-		queueList[k-1] = queueList[k];
-		queueList[k] = temp;
-
-		k--;
-		if(k == 0){ /*The array would be out of bounds if k is 0*/
-			break;
-		}
-	}
-	/*(b) If there is a tie at the highest priority, the one whose arrival time is the earliest start its transmission first.*/
-	if(k != 0 ){ /*already at the top of the list*/
-		while(queueList[k]->priority==queueList[k-1]->priority){
-			/*bubble sort up*/
-			if(queueList[k]->arrivalTime<queueList[k-1]->arrivalTime){
-				flow *temp = queueList[k-1];
-				queueList[k-1] = queueList[k];
-				queueList[k] = temp;
-			}
-
-			k--;
-			if(k == 0){ /*The array would be out of bounds if k is 0*/
-				break;
-			}
-		}
-	}
-	/*(c) If there is still a tie, the one that has the smallest transmission time starts its transmission first.*/
-	if(k != 0 ){ /*already at the top of the list*/
-		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->arrivalTime==queueList[k-1]->arrivalTime){
-			/*bubble sort up*/
-			if(queueList[k]->transTime<queueList[k-1]->transTime){
-				flow *temp = queueList[k-1];
-				queueList[k-1] = queueList[k];
-				queueList[k] = temp;
-			}
-
-			k--;
-			if(k == 0){ /*The array would be out of bounds if k is 0*/
-				break;
-			}
-		}
-	}
-	/*(d) If there is still a tie, the one that appears first in the input file starts its transmission first.*/
-	if(k != 0 ){ /*already at the top of the list*/
-		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->arrivalTime==queueList[k-1]->arrivalTime && queueList[k]->transTime==queueList[k-1]->transTime){
-			/*bubble sort up*/
-			if(queueList[k]->id<queueList[k-1]->id){
-				flow *temp = queueList[k-1];
-				queueList[k-1] = queueList[k];
-				queueList[k] = temp;
-			}
-
-			k--;
-			if(k == 0){ /*The array would be out of bounds if k is 0*/
-				break;
-			}
-		}
-	}
-	if(k != 0){
-		printf("Flow %2d waits for the finish of flow %2d. \n",queueList[k]->id,queueList[k-1]->id);
-	}
-	/*wait till pipe to be available and be at the top of the queue*/
-	while(item->id != queueList[0]->id && iTrans == 0){ /*while the item is not at the front of the list*/
+	sortQueue(item, queueList); /*Sorts that item in the queue*/
+	
+	do{
+		usleep(100000); /*wait a little to make sure iTrans has been successful*/
+		printf("Flow %2d waits for the finish of flow %2d. \n",item->id,iTrans);
 		pthread_cond_wait(&trans_cvar, &trans_mtx);
-	}
-
+	}while((item->id != queueList[0]->id) && (iTrans == 0)); /*checks if it is in top of the queue*/
+	iTrans = item->id;
+	printf("itemid: %d\n",item->id);
 	/*Moves everything over one*/
 	int i = 0;
 	while(queueList[i+1] != NULL){
 		queueList[i] = queueList[i+1];
+		i++;
 	}
 	queueList[i] = NULL;
 
@@ -126,7 +55,8 @@ void requestPipe(flow *item) {
 }
 
 void releasePipe() {
-	pthread_cond_signal(&trans_cvar);
+	iTrans = 0; /*reset transmission id*/
+	pthread_cond_broadcast(&trans_cvar);
 }
 
 
@@ -134,6 +64,7 @@ void releasePipe() {
 void *thrFunction(void *flowItem) {
 
 	flow *item = (flow *)flowItem ;
+	struct timeval start, end;
 
 	/*wait for arrival*/
 	usleep((int)(100000*item->arrivalTime)); /*Multiply by 100000 because input file is gives in seconds one decimal place to the right and usleep is amount of microseconds*/
@@ -142,12 +73,13 @@ void *thrFunction(void *flowItem) {
 	requestPipe(item);
 	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,item->transTime);
 
+	gettimeofday(&start,NULL);
 	/*sleep for transmission time*/
 	usleep((int)(100000*item->transTime));
+	gettimeofday(&end,NULL);
 
-	iTrans = 0;
 	releasePipe();
-	printf("Flow %2d finishes its transmission at time %d.\n",item->id,item->transTime); /*TODO: calculate actual transmission time*/
+	printf("Flow %2d finishes its transmission at time %ld.\n",item->id,((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec);
 
 	return 0; /*TODO: check this warning*/
 }
