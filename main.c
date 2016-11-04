@@ -35,8 +35,9 @@ void requestPipe(flow *item) {
 
 	if (queueList[0] == NULL && iTrans == 0) {
 		iTrans = 1;/*in transmission*/
-		pthread_mutex_lock(&trans_mtx);
-		exit(0);
+		pthread_mutex_unlock(&trans_mtx);
+		return;
+		printf("THE THREAD SHOULDN'T get here\n");
 	}
 
 	int k = 1;
@@ -76,7 +77,7 @@ void requestPipe(flow *item) {
 	}
 	/*(c) If there is still a tie, the one that has the smallest transmission time starts its transmission first.*/
 	if(k != 0 ){ /*already at the top of the list*/
-		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->priority==queueList[k-1]->priority){
+		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->arrivalTime==queueList[k-1]->arrivalTime){
 			/*bubble sort up*/
 			if(queueList[k]->transTime<queueList[k-1]->transTime){
 				flow *temp = queueList[k-1];
@@ -92,7 +93,7 @@ void requestPipe(flow *item) {
 	}
 	/*(d) If there is still a tie, the one that appears first in the input file starts its transmission first.*/
 	if(k != 0 ){ /*already at the top of the list*/
-		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->priority==queueList[k-1]->priority && queueList[k]->transTime==queueList[k-1]->transTime){
+		while(queueList[k]->priority==queueList[k-1]->priority && queueList[k]->arrivalTime==queueList[k-1]->arrivalTime && queueList[k]->transTime==queueList[k-1]->transTime){
 			/*bubble sort up*/
 			if(queueList[k]->id<queueList[k-1]->id){
 				flow *temp = queueList[k-1];
@@ -186,7 +187,6 @@ int main(int argc, char **argv) {
 		str = strtok(NULL,",");
 		(*nwflow).priority = atoi(str);
 		flowList[x] = *nwflow;
-		/*parse line, using strtok() & atoi(), store them in flowList[i];*/
 	}
 
 	fclose(fp); // release file descriptor
@@ -195,12 +195,9 @@ int main(int argc, char **argv) {
 		// create a thread for each flow 
 		pthread_create(&thrList[x], NULL, thrFunction, (void *)&flowList[x]);
 	}
-	// wait for all threads to terminate
-	sleep(10);
-	for( x = 0;x<3;x++){
-		printf("%d\n",queueList[x]->priority);
+	for(x = 0; x<atoi(numFlows);x++){
+		pthread_join(thrList[x],NULL); /*waits for all flows to terminate*/
 	}
-	pthread_join(thrList[0],NULL);
 
 	pthread_mutex_destroy(&trans_mtx);
 	pthread_cond_destroy(&trans_cvar);
