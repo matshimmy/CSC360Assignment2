@@ -1,11 +1,3 @@
-/*
-
-time calculation may be a nightware! 
-Beware of float, int, unsigned int conversion.
-you could use gettimeofday(...) to get down to microseconds!
-
-*/
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +15,9 @@ flow *queueList[MAXFLOW];  // store waiting flows while transmission pipe is occ
 pthread_t thrList[MAXFLOW]; // each thread executes one flow
 pthread_mutex_t trans_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t trans_cvar = PTHREAD_COND_INITIALIZER;
-int iTrans = 0; /*inTransmission 0 == in transmission*/
+int iTrans = 0; /*inTransmission 0 == not in transmission*/
+float atime;
+struct timeval start, end;
 
 void requestPipe(flow *item) {
 	pthread_mutex_lock(&trans_mtx);
@@ -37,12 +31,10 @@ void requestPipe(flow *item) {
 	sortQueue(item, queueList); /*Sorts that item in the queue*/
 	
 	do{
-		usleep(100000); /*wait a little to make sure iTrans has been successful*/
 		printf("Flow %2d waits for the finish of flow %2d. \n",item->id,iTrans);
 		pthread_cond_wait(&trans_cvar, &trans_mtx);
-	}while((item->id != queueList[0]->id) && (iTrans == 0)); /*checks if it is in top of the queue*/
-	iTrans = item->id;
-	printf("itemid: %d\n",item->id);
+	}while(item->id != iTrans); /*checks if it is in top of the queue*/
+
 	/*Moves everything over one*/
 	int i = 0;
 	while(queueList[i+1] != NULL){
@@ -55,7 +47,9 @@ void requestPipe(flow *item) {
 }
 
 void releasePipe() {
-	iTrans = 0; /*reset transmission id*/
+	iTrans = 0;
+	if(queueList[0] != NULL)
+		iTrans = queueList[0]->id; /*reset transmission id*/
 	pthread_cond_broadcast(&trans_cvar);
 }
 
@@ -64,8 +58,6 @@ void releasePipe() {
 void *thrFunction(void *flowItem) {
 
 	flow *item = (flow *)flowItem ;
-	struct timeval start, end;
-	float atime;
 
 	/*wait for arrival*/
 	usleep((int)(100000*item->arrivalTime)); /*Multiply by 100000 because input file is gives in seconds one decimal place to the right and usleep is amount of microseconds*/
@@ -74,12 +66,11 @@ void *thrFunction(void *flowItem) {
 	requestPipe(item);
 	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,.1*item->transTime);
 
-	gettimeofday(&start,NULL);
 	/*sleep for transmission time*/
 	usleep((int)(100000*item->transTime));
 	gettimeofday(&end,NULL);
 
-	atime = (float)(((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec)/1000000;
+	atime = (float)(((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec)/1000000; /*calculates the time from start*/
 	releasePipe();
 	printf("Flow %2d finishes its transmission at time %.2f.\n",item->id,atime);
 
@@ -124,6 +115,8 @@ int main(int argc, char **argv) {
 	}
 
 	fclose(fp); // release file descriptor
+	
+	gettimeofday(&start,NULL);
 
 	for(x = 0; x<atoi(numFlows);x++){
 		// create a thread for each flow 
