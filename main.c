@@ -64,7 +64,9 @@ void *thrFunction(void *flowItem) {
 	printf("Flow %2d arrives: arrival time (%.2f), transmission time (%.1f), priority (%2d).\n",item->id,.1*item->arrivalTime,.1*item->transTime,item->priority);
 
 	requestPipe(item);
-	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,.1*item->transTime);
+	gettimeofday(&end,NULL);
+	atime = (float)(((end.tv_sec - start.tv_sec)*1000000L +end.tv_usec) - start.tv_usec)/1000000; /*calculates the time from start*/
+	printf("Flow %2d starts its transmission at time %.2f.\n",item->id,atime);
 
 	/*sleep for transmission time*/
 	usleep((int)(100000*item->transTime));
